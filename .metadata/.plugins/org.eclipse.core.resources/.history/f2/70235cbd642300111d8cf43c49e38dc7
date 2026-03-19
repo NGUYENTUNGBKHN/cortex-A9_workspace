@@ -1,0 +1,14 @@
+set pagination off
+set confirm off
+
+# Kết nối tới OpenOCD GDB server
+target extended-remote localhost:3333
+
+# Load chương trình vào target
+load
+
+# Đặt breakpoint tại hàm main
+break main
+
+# Tiếp tục chạy tới main
+continue

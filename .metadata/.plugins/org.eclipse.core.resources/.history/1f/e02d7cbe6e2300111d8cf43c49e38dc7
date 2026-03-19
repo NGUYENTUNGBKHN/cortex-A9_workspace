@@ -1,0 +1,21 @@
+
+target extended-remote localhost:3333
+
+monitor reset halt
+
+monitor load_image ${project_loc}/boot_es/u-boot-spl.axf 0xFFFF0000
+
+monitor reg pc 0xFFFF0000
+
+monitor resume
+
+monitor sleep 3000
+
+monitor halt
+
+load
+
+break main
+
+continue
+

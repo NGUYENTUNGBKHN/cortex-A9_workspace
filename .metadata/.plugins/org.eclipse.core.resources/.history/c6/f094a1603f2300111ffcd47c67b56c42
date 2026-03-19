@@ -1,0 +1,134 @@
+/*
+ * main.c — DE10-Nano HPS Baremetal Demo
+ * =======================================
+ *  Features:
+ *   1. UART0  → 115200 8N1, polling TX, printf-style logging
+ *   2. HPS_LED (GPIO1[24]) → blinks via Timer interrupt
+ *   3. HPS_KEY (GPIO1[25]) → polled, prints message on press
+ *   4. SP Timer 0 @ 500 ms → periodic interrupt, toggles LED
+ *
+ *  Toolchain:  arm-none-eabi-gcc
+ *  Board:      Terasic DE10-Nano (Cyclone V SX)
+ */
+
+#include <stdint.h>
+#include "hps_regs.h"
+#include "uart.h"
+#include "gic.h"
+#include "timer.h"
+
+/* ─── Clock Assumptions ─────────────────────────────────────
+ *  These values depend on whether a preloader/u-boot ran first.
+ *  Adjust to match your actual HPS PLL configuration.
+ * ─────────────────────────────────────────────────────────── */
+#define L4_SP_CLK_HZ    100000000UL   /* 100 MHz  (L4_SP after preloader) */
+#define L4_UART_CLK_HZ   25000000UL  /* 25  MHz  (UART_CLK)              */
+#define BAUD_RATE          115200UL
+
+/* ─── GPIO Helpers ──────────────────────────────────────────*/
+
+static inline void gpio_set_dir_out(uint32_t base, uint32_t pins) {
+	REG32(base + GPIO_SWPORTA_DDR) |= pins;
+}
+
+static inline void gpio_write(uint32_t base, uint32_t pins, uint32_t val) {
+	if (val)
+		REG32(base + GPIO_SWPORTA_DR) |= pins;
+	else
+		REG32(base + GPIO_SWPORTA_DR) &= ~pins;
+}
+
+static inline void gpio_toggle(uint32_t base, uint32_t pins) {
+	REG32(base + GPIO_SWPORTA_DR) ^= pins;
+}
+
+static inline uint32_t gpio_read(uint32_t base, uint32_t pins) {
+	return REG32(base + GPIO_EXT_PORTA) & pins;
+}
+
+/* ─── Timer Callback (runs in IRQ context) ──────────────── */
+
+static volatile uint32_t g_tick_count = 0;
+
+static void on_timer_tick(void) {
+	g_tick_count++;
+	gpio_toggle(GPIO1_BASE, HPS_LED_BIT); /* Toggle HPS_LED */
+}
+
+/* ─── Delay (busy-wait, calibrate if needed) ────────────── */
+
+static void delay_ms(uint32_t ms) {
+	/* Rough loop: ~6 cycles per iteration @ 800 MHz Cortex-A9
+	 * Adjust divisor to match your actual CPU frequency.
+	 * For accurate delay use the timer instead.                */
+	volatile uint32_t count = ms * (800000000UL / 6000UL / 1000UL);
+	while (count--) {
+		__asm__ volatile ("nop");
+	}
+}
+
+/* ─── Banner ─────────────────────────────────────────────── */
+
+static void print_banner(void) {
+	uart_puts(UART0_BASE, "\r\n");
+	uart_puts(UART0_BASE, "╔══════════════════════════════════════╗\r\n");
+	uart_puts(UART0_BASE, "║  DE10-Nano HPS Baremetal Demo        ║\r\n");
+	uart_puts(UART0_BASE, "║  Cortex-A9  |  arm-none-eabi-gcc     ║\r\n");
+	uart_puts(UART0_BASE, "╚══════════════════════════════════════╝\r\n");
+	uart_puts(UART0_BASE, "\r\n");
+}
+
+/* ─── Main ───────────────────────────────────────────────── */
+
+int main(void) {
+	/* 1. Init UART0 ─────────────────────────────────────── */
+	uart_init(UART0_BASE, L4_UART_CLK_HZ, BAUD_RATE);
+	print_banner();
+	uart_printf(UART0_BASE, "[BOOT] UART0 initialized @ %u baud\n", BAUD_RATE);
+
+	/* 2. Init GIC ───────────────────────────────────────── */
+	gic_init();
+	uart_puts(UART0_BASE, "[BOOT] GIC-400 initialized\n");
+
+	/* 3. Init GPIO ──────────────────────────────────────── */
+	gpio_set_dir_out(GPIO1_BASE, HPS_LED_BIT); /* LED = output */
+	gpio_write(GPIO1_BASE, HPS_LED_BIT, 0); /* LED off      */
+	uart_puts(UART0_BASE,
+			"[BOOT] GPIO initialized (HPS_LED=output, HPS_KEY=input)\n");
+
+	/* 4. Init Timer (500 ms period, blinks LED) ─────────── */
+	timer_init(L4_SP_CLK_HZ, 500, on_timer_tick);
+	uart_puts(UART0_BASE, "[BOOT] Timer0 started @ 500 ms\n");
+
+	/* 5. Enable global IRQ ──────────────────────────────── */
+	__asm__ volatile ("cpsie i");
+	uart_puts(UART0_BASE, "[BOOT] IRQ enabled — entering main loop\n\n");
+
+	/* ── Main Loop ───────────────────────────────────────── */
+	uint32_t last_tick = 0;
+	uint32_t key_prev = 1; /* key is active-low (pull-up), 1 = not pressed */
+
+	while (1) {
+		/* Print tick counter every 2 seconds (4 x 500ms ticks) */
+		if (g_tick_count != last_tick && (g_tick_count % 4) == 0) {
+			last_tick = g_tick_count;
+			uint32_t elapsed_s = g_tick_count / 2; /* 500ms * 2 = 1s */
+			uart_printf(UART0_BASE,
+					"[INFO] Uptime: %u s  |  Tick: %u  |  LED toggled\n",
+					elapsed_s, g_tick_count);
+		}
+
+		/* Poll HPS_KEY — print on falling edge (press) */
+		uint32_t key_now = gpio_read(GPIO1_BASE, HPS_KEY_BIT) ? 1u : 0u;
+		if (key_prev == 1 && key_now == 0) {
+			uart_printf(UART0_BASE, "[KEY] HPS_KEY pressed at tick %u\n",
+					g_tick_count);
+		}
+		key_prev = key_now;
+
+		/* Low-power wait for interrupt */
+		__asm__ volatile ("wfi");
+	}
+
+	return 0;
+}

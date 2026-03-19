@@ -1,0 +1,83 @@
+/*
+ * Linker Script - DE10-Nano HPS Baremetal
+ * Target: Cyclone V HPS ARM Cortex-A9
+ *
+ * Memory Map (Cyclone V HPS):
+ *   0xFFFF0000 - 0xFFFFFFFF : OCRAM (64KB) 
+ *   0x00000000 - 0x3FFFFFFF : SDRAM (map sau khi DDR init)
+ *   0xFF200000 - 0xFF3FFFFF : Lightweight HPS-to-FPGA AXI Bridge
+ *   0xFF700000 - 0xFF7FFFFF : HPS Peripherals (UART, GPIO, Timers)
+ */
+
+ENTRY(_start)
+
+MEMORY
+{
+    OCRAM (rwx) : ORIGIN = 0xFFFF0000, LENGTH = 64K
+    SDRAM (rwx) : ORIGIN = 0x00000000, LENGTH = 512M
+}
+
+REGION_ALIAS("REGION_TEXT",   OCRAM)
+REGION_ALIAS("REGION_RODATA", OCRAM)
+REGION_ALIAS("REGION_DATA",   OCRAM)
+REGION_ALIAS("REGION_BSS",    OCRAM)
+REGION_ALIAS("REGION_STACK",  OCRAM)
+
+SECTIONS
+{
+    . = ORIGIN(OCRAM);
+
+    /* ── Vector Table () ───────────────────── */
+    .vectors :
+    {
+        KEEP(*(.vectors))
+    } > REGION_TEXT
+
+    /* ── Code ────────────────────────────────────────── */
+    .text :
+    {
+        *(.text.startup)
+        *(.text*)
+        . = ALIGN(4);
+    } > REGION_TEXT
+
+    /* ── Read-only data ──────────────────────────────── */
+    .rodata :
+    {
+        *(.rodata*)
+        . = ALIGN(4);
+    } > REGION_RODATA
+
+    /* ── Initialized data ────────────────────────────── */
+    _data_lma = LOADADDR(.data);
+    .data :
+    {
+        _data_start = .;
+        *(.data*)
+        . = ALIGN(4);
+        _data_end = .;
+    } > REGION_DATA
+
+    /* ── Zero-initialized data ───────────────────────── */
+    .bss (NOLOAD) :
+    {
+        _bss_start = .;
+        *(.bss*)
+        *(COMMON)
+        . = ALIGN(4);
+        _bss_end = .;
+    } > REGION_BSS
+
+    _end = .;
+
+    .stack (NOLOAD) :
+    {
+        . = ORIGIN(OCRAM) + LENGTH(OCRAM) - 0x4000;
+        . = ALIGN(8);
+        _stack_bottom = .;
+        . += 0x4000;          /* 16KB stack */
+        _stack_top = .;
+    } > REGION_STACK
+}
+
+ASSERT(_stack_bottom >= _end, "ERROR: Stack overlaps with data/bss!")

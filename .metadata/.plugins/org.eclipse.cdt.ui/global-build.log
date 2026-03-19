@@ -1,0 +1,99 @@
+18:02:28 **** Build of configuration Debug for project lab1 ****
+make all 
+'Building file: ../main.c'
+'Invoking: GNU Arm Cross C Compiler'
+arm-none-eabi-gcc -mcpu=cortex-a9 -marm -mlittle-endian -mfloat-abi=hard -mfpu=vfpv3xd-fp16 -munaligned-access -O0 -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections -g3 -std=gnu11 -MMD -MP -MF"main.d" -MT"main.o" -c -o "main.o" "../main.c"
+'Finished building: ../main.c'
+' '
+'Building file: ../syscall.c'
+'Invoking: GNU Arm Cross C Compiler'
+arm-none-eabi-gcc -mcpu=cortex-a9 -marm -mlittle-endian -mfloat-abi=hard -mfpu=vfpv3xd-fp16 -munaligned-access -O0 -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections -g3 -std=gnu11 -MMD -MP -MF"syscall.d" -MT"syscall.o" -c -o "syscall.o" "../syscall.c"
+'Finished building: ../syscall.c'
+' '
+'Building target: lab1.elf'
+'Invoking: GNU Arm Cross C Linker'
+arm-none-eabi-gcc -mcpu=cortex-a9 -marm -mlittle-endian -mfloat-abi=hard -mfpu=vfpv3xd-fp16 -munaligned-access -O0 -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections -g3 -T "E:\Project\Embedded\intelFPGA\cortex-A9_workspace\lab1\linker.ld" -Xlinker --gc-sections -Wl,-Map,"lab1.map" -o "lab1.elf"  ./main.o ./syscall.o   
+'Finished building target: lab1.elf'
+' '
+'Invoking: GNU Arm Cross Create Flash Image'
+arm-none-eabi-objcopy -O ihex "lab1.elf"  "lab1.hex"
+'Finished building: lab1.hex'
+' '
+'Invoking: GNU Arm Cross Print Size'
+arm-none-eabi-size --format=berkeley "lab1.elf"
+   text	   data	    bss	    dec	    hex	filename
+      8	      0	      0	      8	      8	lab1.elf
+'Finished building: lab1.siz'
+' '
+18:02:51 **** Incremental Build of configuration Debug for project lab1 ****
+make all 
+'Invoking: GNU Arm Cross Print Size'
+arm-none-eabi-size --format=berkeley "lab1.elf"
+   text	   data	    bss	    dec	    hex	filename
+      8	      0	      0	      8	      8	lab1.elf
+'Finished building: lab1.siz'
+' '
+18:05:06 **** Incremental Build of configuration Debug for project lab1 ****
+make all 
+'Invoking: GNU Arm Cross Print Size'
+arm-none-eabi-size --format=berkeley "lab1.elf"
+   text	   data	    bss	    dec	    hex	filename
+      8	      0	      0	      8	      8	lab1.elf
+'Finished building: lab1.siz'
+' '
+18:08:09 **** Incremental Build of configuration Debug for project lab1 ****
+make all 
+'Invoking: GNU Arm Cross Print Size'
+arm-none-eabi-size --format=berkeley "lab1.elf"
+   text	   data	    bss	    dec	    hex	filename
+      8	      0	      0	      8	      8	lab1.elf
+'Finished building: lab1.siz'
+' '
+18:15:54 **** Incremental Build of configuration Debug for project lab1 ****
+make all 
+'Invoking: GNU Arm Cross Print Size'
+arm-none-eabi-size --format=berkeley "lab1.elf"
+   text	   data	    bss	    dec	    hex	filename
+      8	      0	      0	      8	      8	lab1.elf
+'Finished building: lab1.siz'
+' '
+18:16:33 **** Incremental Build of configuration Debug for project lab1 ****
+make all 
+'Invoking: GNU Arm Cross Print Size'
+arm-none-eabi-size --format=berkeley "lab1.elf"
+   text	   data	    bss	    dec	    hex	filename
+      8	      0	      0	      8	      8	lab1.elf
+'Finished building: lab1.siz'
+' '
+18:20:57 **** Incremental Build of configuration Debug for project lab1 ****
+make all 
+'Invoking: GNU Arm Cross Print Size'
+arm-none-eabi-size --format=berkeley "lab1.elf"
+   text	   data	    bss	    dec	    hex	filename
+      8	      0	      0	      8	      8	lab1.elf
+'Finished building: lab1.siz'
+' '
+18:36:46 **** Incremental Build of configuration Debug for project lab1 ****
+make all 
+'Invoking: GNU Arm Cross Print Size'
+arm-none-eabi-size --format=berkeley "lab1.elf"
+   text	   data	    bss	    dec	    hex	filename
+      8	      0	      0	      8	      8	lab1.elf
+'Finished building: lab1.siz'
+' '
+18:40:17 **** Incremental Build of configuration Debug for project lab1 ****
+make all 
+'Invoking: GNU Arm Cross Print Size'
+arm-none-eabi-size --format=berkeley "lab1.elf"
+   text	   data	    bss	    dec	    hex	filename
+      8	      0	      0	      8	      8	lab1.elf
+'Finished building: lab1.siz'
+' '
+18:41:10 **** Incremental Build of configuration Debug for project lab1 ****
+make all 
+'Invoking: GNU Arm Cross Print Size'
+arm-none-eabi-size --format=berkeley "lab1.elf"
+   text	   data	    bss	    dec	    hex	filename
+      8	      0	      0	      8	      8	lab1.elf
+'Finished building: lab1.siz'
+' '

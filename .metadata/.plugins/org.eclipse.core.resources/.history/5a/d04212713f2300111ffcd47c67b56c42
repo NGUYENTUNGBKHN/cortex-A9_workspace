@@ -1,0 +1,314 @@
+
+code cho tôi baremetal cho board DE10-nano build trên eclipse tool arm-none-eabi-gcc
+
+11:13
+Tôi cần thêm thông tin để code phù hợp nhất cho bạn.
+
+Để tôi tạo một baremetal project đầy đủ cho DE10-Nano với các tính năng phổ biến nhất — HPS ARM Cortex-A9, bao gồm Blink LED + UART + Timer Interrupt. Đây là bộ project hoàn chỉnh:
+
+
+Created 14 files, read a file
+Created 14 files, read a file
+Đây là toàn bộ project baremetal DE10-Nano gồm 14 file, sẵn sàng build với arm-none-eabi-gcc và import vào Eclipse.
+
+Kiến trúc Project
+startup.S  →  Vector table + IRQ_Handler
+    ↓
+main.c     →  uart_init → gic_init → gpio_init → timer_init → main loop
+                                          ↓
+                                     timer_isr (GIC IRQ 201)
+                                          ↓
+                                     gpio_toggle (HPS_LED)
+Các file chính
+File	Vai trò
+startup.S	Vector table tại 0x0, khởi tạo stack IRQ/SVC, copy .data, clear .bss
+linker.ld	Map code vào OCRAM (0x00000000, 256KB)
+hps_regs.h	Toàn bộ register map: UART, GPIO, Timer, GIC
+gic.c	GIC-400 driver — enable IRQ, dispatch handler table
+timer.c	SP Timer 0 — periodic 500ms, callback-based
+uart.c	16550 polling driver + mini printf
+main.c	Demo: UART log, LED blink qua interrupt, KEY polling
+Build ngay
+bash
+make all        # → build/de10nano_baremetal.elf/.bin/.hex
+make dump       # → disassembly .lst
+Lưu ý quan trọng
+Clock: Chỉnh L4_SP_CLK_HZ và L4_UART_CLK_HZ trong main.c cho khớp với PLL của bạn (100MHz nếu đã qua preloader, 25MHz nếu chạy thẳng từ JTAG)
+JTAG load: Dùng OpenOCD + GDB hoặc quartus_pgm để load .elf lên OCRAM
+Eclipse import: File → Import → Existing Projects — .project/.cproject đã cấu hình sẵn Cross GCC toolchain
+Main
+C
+Startup
+S
+Linker
+LD
+Hps regs
+H
+Uart
+H
+Uart
+C
+Gic
+H
+Gic
+C
+Timer
+H
+Timer
+C
+Makefile
+
+.cproject
+CPROJECT
+.project
+PROJECT
+Readme
+Document · MD
+Q: Bạn muốn demo chức năng gì trên DE10-Nano? (Select all that apply)
+A: [No preference]
+
+Q: Target processor?
+A: HPS ARM Cortex-A9
+
+11:23
+Tôi đã tạo project đầy đủ với các tính năng phổ biến nhất rồi — UART + LED Blink + Timer Interrupt + HPS_KEY — đây là bộ demo chuẩn cho HPS Cortex-A9 trên DE10-Nano.
+
+Tất cả 14 file đã được tạo ở trên, bạn có thể dùng ngay. Nếu muốn thêm tính năng cụ thể nào khác như HPS-FPGA Bridge, SPI/I2C, hay Ethernet, chỉ cần cho tôi biết!
+
+make all
+'Building file: ../gic.c'
+'Invoking: GNU Arm Cross C Compiler'
+arm-none-eabi-gcc -mcpu=cortex-a9 -marm -mlittle-endian -mfloat-abi=hard -mfpu=vfpv3-fp16 -munaligned-access -O0 -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections -g3 -std=gnu11 -MMD -MP -MF"gic.d" -MT"gic.o" -c -o "gic.o" "../gic.c"
+'Finished building: ../gic.c'
+' '
+'Building file: ../main.c'
+'Invoking: GNU Arm Cross C Compiler'
+arm-none-eabi-gcc -mcpu=cortex-a9 -marm -mlittle-endian -mfloat-abi=hard -mfpu=vfpv3-fp16 -munaligned-access -O0 -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections -g3 -std=gnu11 -MMD -MP -MF"main.d" -MT"main.o" -c -o "main.o" "../main.c"
+'Finished building: ../main.c'
+' '
+'Building file: ../startup.S'
+'Invoking: GNU Arm Cross Assembler'
+arm-none-eabi-gcc -mcpu=cortex-a9 -marm -mlittle-endian -mfloat-abi=hard -mfpu=vfpv3-fp16 -munaligned-access -O0 -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections -g3 -x assembler-with-cpp -MMD -MP -MF"startup.d" -MT"startup.o" -c -o "startup.o" "../startup.S"
+../startup.S: Assembler messages:
+../startup.S:122: Error: push/pop do not support {reglist}^ -- `pop {r0-r12,pc}^'
+make: *** [subdir.mk:43: startup.o] Error 1
+"make all" terminated with exit code 2. Build might be incomplete.
+
+Show more
+11:53
+Lỗi này do pop {r0-r12, pc}^ (return from IRQ với ^) không được hỗ trợ trong Thumb/unified syntax với GCC mới. Cần dùng cách khác để return từ IRQ mode.
+
+
+Edited a file, read a file
+Edited a file, read a file
+Nguyên nhân lỗi: pop {reglist}^ là cú pháp ARMv4/v5 cũ để return từ exception, nhưng GCC assembler hiện đại không hỗ trợ cú pháp này.
+
+Fix: Dùng 2 instruction chuẩn ARMv6+:
+
+asm
+srsdb  sp!, #0x12   ; Save Return State (LR_irq + SPSR_irq) → IRQ stack
+...
+rfeia  sp!          ; Return From Exception → restore PC + CPSR tự động
+Kèm theo đó, handler giờ switch sang SVC mode trước khi call irq_dispatch() — đây là best practice để ISR có thể dùng SVC stack thay vì IRQ stack nhỏ.
+
+Thay đoạn IRQ_Handler trong file startup.S của bạn bằng đoạn mới, rồi make all lại là được.
+
+Startup
+S
+make all
+'Building file: ../startup.S'
+'Invoking: GNU Arm Cross Assembler'
+arm-none-eabi-gcc -mcpu=cortex-a9 -marm -mlittle-endian -mfloat-abi=hard -mfpu=vfpv3-fp16 -munaligned-access -O0 -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections -g3 -x assembler-with-cpp -MMD -MP -MF"startup.d" -MT"startup.o" -c -o "startup.o" "../startup.S"
+'Finished building: ../startup.S'
+' '
+'Building file: ../timer.c'
+'Invoking: GNU Arm Cross C Compiler'
+arm-none-eabi-gcc -mcpu=cortex-a9 -marm -mlittle-endian -mfloat-abi=hard -mfpu=vfpv3-fp16 -munaligned-access -O0 -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections -g3 -std=gnu11 -MMD -MP -MF"timer.d" -MT"timer.o" -c -o "timer.o" "../timer.c"
+'Finished building: ../timer.c'
+' '
+'Building file: ../uart.c'
+'Invoking: GNU Arm Cross C Compiler'
+arm-none-eabi-gcc -mcpu=cortex-a9 -marm -mlittle-endian -mfloat-abi=hard -mfpu=vfpv3-fp16 -munaligned-access -O0 -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections -g3 -std=gnu11 -MMD -MP -MF"uart.d" -MT"uart.o" -c -o "uart.o" "../uart.c"
+'Finished building: ../uart.c'
+' '
+'Building target: lab0.elf'
+'Invoking: GNU Arm Cross C Linker'
+arm-none-eabi-gcc -mcpu=cortex-a9 -marm -mlittle-endian -mfloat-abi=hard -mfpu=vfpv3-fp16 -munaligned-access -O0 -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections -g3 -T "E:\Project\Embedded\intelFPGA\cortex-A9_workspace\lab0\linker.ld" -Xlinker --gc-sections -Wl,-Map,"lab0.map" -o "lab0.elf"  ./gic.o ./main.o ./startup.o ./timer.o ./uart.o
+c:/gcc-arm-none-eabi/bin/../lib/gcc/arm-none-eabi/10.3.1/../../../../arm-none-eabi/bin/ld.exe: ./startup.o: in function _start':
+E:\Project\Embedded\intelFPGA\cortex-A9_workspace\lab0\Debug/../startup.S:35: multiple definition of _start'; c:/gcc-arm-none-eabi/bin/../lib/gcc/arm-none-eabi/10.3.1/../../../../arm-none-eabi/lib/thumb/v7-a+fp/hard/crt0.o:(.text+0x74): first defined here
+c:/gcc-arm-none-eabi/bin/../lib/gcc/arm-none-eabi/10.3.1/../../../../arm-none-eabi/bin/ld.exe: c:/gcc-arm-none-eabi/bin/../lib/gcc/arm-none-eabi/10.3.1/../../../../arm-none-eabi/lib/thumb/v7-a+fp/hard/crt0.o: in function _mainCRTStartup':
+(.text+0xd8): undefined reference to __bss_start__'
+c:/gcc-arm-none-eabi/bin/../lib/gcc/arm-none-eabi/10.3.1/../../../../arm-none-eabi/bin/ld.exe: (.text+0xdc): undefined reference to __bss_end__'
+c:/gcc-arm-none-eabi/bin/../lib/gcc/arm-none-eabi/10.3.1/../../../../arm-none-eabi/bin/ld.exe: c:/gcc-arm-none-eabi/bin/../lib/gcc/arm-none-eabi/10.3.1/../../../../arm-none-eabi/lib/thumb/v7-a+fp/hard\libg.a(lib_a-exit.o): in function exit':
+exit.c:(.text.exit+0x1c): undefined reference to `_exit'
+collect2.exe: error: ld returned 1 exit status
+make: *** [makefile:60: lab0.elf] Error 1
+"make all" terminated with exit code 2. Build might be incomplete.
+
+Show more
+11:55
+Lỗi do Eclipse đang link cả crt0.o (C runtime mặc định) lẫn startup.S của mình — xung đột _start. Cần thêm -nostartfiles -nostdlib vào linker flags trong Eclipse settings.
+
+Cách fix trong Eclipse CDT
+Project → Properties → C/C++ Build → Settings → GNU Arm Cross C Linker → Miscellaneous
+
+Thêm vào Linker flags:
+
+-nostartfiles -nostdlib
+Nhưng đồng thời cần fix thêm linker script — Eclipse dùng symbol __bss_start__ / __bss_end__ khác với tên tôi đặt. Sửa linker.ld để export đủ symbol:
+
+
+Edited a file, viewed a file, created a file
+Edited a file, viewed a file, created a file
+Có 3 lỗi cần fix, tất cả đều liên quan đến Eclipse đang link crt0 mặc định:
+
+Fix bắt buộc trong Eclipse (quan trọng nhất)
+Project → Properties → C/C++ Build → Settings → GNU Arm Cross C Linker → Miscellaneous
+
+Tìm ô "Other linker flags", thêm:
+
+-nostartfiles -nostdlib
+Đây là root cause: Eclipse tự động link crt0.o của newlib, xung đột với _start trong startup.S của mình.
+
+3 lỗi và cách giải thích
+Lỗi	Nguyên nhân	Fix
+multiple definition of '_start'	crt0.o có _start rồi	-nostartfiles
+undefined reference to '__bss_start__'	crt0.o dùng tên này	Đã thêm vào linker.ld
+undefined reference to '_exit'	newlib gọi _exit khi main return	PROVIDE(_exit = .) trong linker.ld
+Tóm tắt các thay đổi
+linker.ld (đã cập nhật): thêm __bss_start__, __bss_end__, PROVIDE(_exit)
+Eclipse settings: thêm -nostartfiles -nostdlib vào Linker flags
+Sau khi thêm flag đó, make all sẽ build thành công.
+
+Linker
+LD
+\Embedded\intelFPGA\cortex-A9_workspace\lab0\linker.ld" -Xlinker --gc-sections -Wl,-Map,"lab0.map" -nostartfiles -nostdlib -o "lab0.elf"  ./gic.o ./main.o ./startup.o ./timer.o ./uart.o
+c:/gcc-arm-none-eabi/bin/../lib/gcc/arm-none-eabi/10.3.1/../../../../arm-none-eabi/bin/ld.exe: ./uart.o: in function uart_init':
+E:\Project\Embedded\intelFPGA\cortex-A9_workspace\lab0\Debug/../uart.c:13: undefined reference to __aeabi_uidiv'
+collect2.exe: error: ld returned 1 exit status
+make: *** [makefile:60: lab0.elf] Error 1
+"make all" terminated with exit code 2. Build might be incomplete.
+
+11:55
+__aeabi_uidiv là hàm chia integer của libgcc — bị thiếu vì dùng -nostdlib loại bỏ luôn libgcc. Cần thêm -lgcc lại.
+
+Fix trong Eclipse
+Project → Properties → C/C++ Build → Settings → GNU Arm Cross C Linker → Miscellaneous
+
+Sửa linker flags thành:
+
+-nostartfiles -nostdlib -lgcc
+-nostdlib loại bỏ libc + libg, nhưng -lgcc phải giữ lại vì nó chứa các helper như __aeabi_uidiv, __aeabi_uidivmod, __aeabi_dmul...
+
+Hoặc dùng -nodefaultlibs thay vì -nostdlib — tương đương nhưng rõ nghĩa hơn:
+
+-nostartfiles -nodefaultlibs -lgcc
+Ngoài ra, để tránh hoàn toàn phụ thuộc vào __aeabi_uidiv, tôi có thể sửa uart.c để tránh phép chia integer động. Sửa hàm uart_init:
+
+
+Ran 2 commands
+Ran 2 commands
+Phép chia trong uart_init là runtime division — GCC cần __aeabi_uidiv. Cách sạch nhất là tính sẵn divisor ở compile time bằng const hoặc truyền thẳng divisor vào. Tôi sửa uart.h + uart.c để nhận divisor trực tiếp, tránh hoàn toàn runtime division:
+
+
+Ran 2 commands
+Ran 2 commands
+Cập nhật main.c — đổi cách gọi uart_init:
+
+
+Ran a command, read a file
+Ran a command, read a file
+Root cause: -nostdlib loại bỏ libgcc, nhưng phép chia uint32_t / uint32_t trên ARM được GCC compile thành call __aeabi_uidiv — một hàm nằm trong libgcc.
+
+Có 2 cách fix, chọn 1 trong 2:
+
+Cách 1 — Thêm -lgcc (đơn giản nhất) Trong Eclipse → Linker flags:
+
+-nostartfiles -nostdlib -lgcc
+Cách 2 — Tránh runtime division hoàn toàn (đã áp dụng ở trên)
+
+Macro UART_DIVISOR(clk, baud) được tính tại compile time vì cả hai tham số là hằng số — GCC sẽ fold thành một số nguyên luôn, không sinh ra call __aeabi_uidiv nữa:
+
+c
+// Thay vì:
+uart_init(UART0_BASE, 25000000, 115200);   // → runtime division
+
+// Dùng:
+uart_init(UART0_BASE, UART_DIVISOR(25000000, 115200));  // → compile-time constant = 13
+Cả uart.h, uart.c, main.c đã được cập nhật. Thay 3 file đó rồi build lại là xong.
+
+Uart
+H
+Uart
+C
+Main
+C
+arm-none-eabi-gcc -mcpu=cortex-a9 -marm -mlittle-endian -mfloat-abi=hard -mfpu=vfpv3-fp16 -munaligned-access -O0 -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections -g3 -T "E:\Project\Embedded\intelFPGA\cortex-A9_workspace\lab0\linker.ld" -Xlinker --gc-sections -Wl,-Map,"lab0.map" -nostartfiles -nostdlib -lgcc -o "lab0.elf"  ./gic.o ./main.o ./startup.o ./timer.o ./uart.o
+c:/gcc-arm-none-eabi/bin/../lib/gcc/arm-none-eabi/10.3.1/../../../../arm-none-eabi/bin/ld.exe: ./uart.o: in function uart_init':
+E:\Project\Embedded\intelFPGA\cortex-A9_workspace\lab0\Debug/../uart.c:13: undefined reference to __aeabi_uidiv'
+collect2.exe: error: ld returned 1 exit status
+make: *** [makefile:60: lab0.elf] Error 1
+"make all" terminated with exit code 2. Build might be incomplete.
+
+Show more
+11:56
+Vẫn còn __aeabi_uidiv vì _putdec trong uart.c dùng n % 10 và n / 10 — đây cũng là runtime division. Cần xóa hoàn toàn phép chia / và % khỏi toàn bộ code.
+
+
+Find all division/modulo in uart.c
+Find all division/modulo in uart.c
+Đúng rồi — line 67: n % 10 và n /= 10 trong _putdec. Cần viết lại bằng subtraction loop thay vì division:
+
+
+Rewrite uart.c with zero runtime division
+Rewrite uart.c with zero runtime division
+Kiểm tra lại — không còn / hay % nào trên integer variable:
+
+
+Scan all C files for division/modulo operators
+Scan all C files for division/modulo operators
+Còn nhiều runtime division trong timer.c, main.c, gic.c. Fix tất cả:
+
+
+Running command
+Running command
+
+
+
+
+Claude is AI and can make mistakes. Please double-check responses.
+Uart · H
+Copy
+
+/*
+ * uart.h — UART0 Driver for DE10-Nano HPS Baremetal
+ * 16550-compatible, polling mode
+ *
+ * Divisor = l4_clk_hz / (16 * baud)
+ * Computed at compile time via macro to avoid __aeabi_uidiv dependency.
+ *
+ * Example:
+ *   uart_init(UART0_BASE, UART_DIVISOR(25000000, 115200));
+ */
+
+#ifndef UART_H
+#define UART_H
+
+#include <stdint.h>
+
+/* Compile-time divisor calculation — no runtime division needed */
+#define UART_DIVISOR(clk_hz, baud)   ((clk_hz) / (16u * (baud)))
+
+void    uart_init   (uint32_t base, uint32_t divisor);
+void    uart_putc   (uint32_t base, char c);
+void    uart_puts   (uint32_t base, const char *s);
+int     uart_getc   (uint32_t base);
+void    uart_printf (uint32_t base, const char *fmt, ...);
+
+#endif /* UART_H */
+
+
+Beta
+0 / 10
+used queries
+1

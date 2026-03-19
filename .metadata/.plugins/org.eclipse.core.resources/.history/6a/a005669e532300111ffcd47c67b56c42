@@ -1,0 +1,73 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+
+adapter driver usb_blaster
+usb_blaster vid_pid 0x09fb 0x6010 0x09fb 0x6810
+usb_blaster lowlevel_driver ublast2
+usb_blaster firmware /path/to/quartus/blaster_6810.hex
+
+if { [info exists CHIPNAME] } {
+   set _CHIPNAME $CHIPNAME
+} else {
+   set _CHIPNAME fpgasoc
+}
+
+if { [info exists FPGA_TAPID] } {
+   set _FPGA_TAPID $FPGA_TAPID
+} else {
+   set _FPGA_TAPID 0x02d020dd
+}
+jtag newtap $_CHIPNAME.fpga tap \
+    -irlen 10 -ircapture 0x01 -irmask 0x3 -expected-id $_FPGA_TAPID
+
+if { [info exists DAP_TAPID] } {
+   set _DAP_TAPID $DAP_TAPID
+} else {
+   set _DAP_TAPID 0x4ba00477
+}
+jtag newtap $_CHIPNAME cpu \
+    -irlen 4 -ircapture 0x01 -irmask 0x0f -expected-id $_DAP_TAPID
+
+reset_config none
+
+set _TARGETNAME1 $_CHIPNAME.cpu.0
+
+dap create $_CHIPNAME.dap -chain-position $_CHIPNAME.cpu
+target create $_TARGETNAME1 cortex_a -dap $_CHIPNAME.dap \
+    -coreid 0 -dbgbase 0x80110000
+
+$_TARGETNAME1 configure -event examine-end {
+    catch { $::_TARGETNAME1 arm mrc 14 0 0 5 0 }
+    poll_period 500
+}
+
+$_TARGETNAME1 configure -event halted {
+    $::_TARGETNAME1 cortex_a maskisr on
+}
+
+$_TARGETNAME1 configure -event resumed {
+    $::_TARGETNAME1 cortex_a maskisr off
+}
+
+$_TARGETNAME1 configure -event reset-start {
+    catch { $::_TARGETNAME1 arm semihosting disable }
+}
+
+$_TARGETNAME1 configure -event reset-assert {
+    catch { $::_TARGETNAME1 arp_halt }
+}
+
+$_TARGETNAME1 configure -event reset-assert-post {
+    after 200
+    cycv_dbginit $::_TARGETNAME1
+}
+
+$_TARGETNAME1 configure -event reset-deassert-post {
+    after 100
+    catch { $::_TARGETNAME1 arp_halt }
+    catch { $::_TARGETNAME1 arp_waitstate halted 500 }
+}
+
+proc cycv_dbginit {target} {
+    catch { $target dap apcsw 0x50000004 }
+    catch { $target cortex_a dbginit }
+}

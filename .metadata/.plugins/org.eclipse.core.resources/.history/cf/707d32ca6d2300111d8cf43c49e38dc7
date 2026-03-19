@@ -1,0 +1,6 @@
+
+target extended-remote localhost:3333
+
+monitor reset halt
+
+monitor load_image boot_es/u-boot-spl.axf 0xFFFF0000

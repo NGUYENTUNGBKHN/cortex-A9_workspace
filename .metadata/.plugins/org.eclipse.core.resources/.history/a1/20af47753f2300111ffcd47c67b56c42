@@ -1,0 +1,150 @@
+/*
+ * uart.c — UART0 16550-compatible polling driver
+ * DE10-Nano HPS Baremetal
+ */
+
+#include "uart.h"
+#include "hps_regs.h"
+#include <stdarg.h>
+
+/* ─── Init ─────────────────────────────────────────────── */
+
+void uart_init(uint32_t base, uint32_t l4_clk_hz, uint32_t baud) {
+	uint32_t divisor = l4_clk_hz / (16u * baud);
+
+	/* Disable all interrupts */
+	REG32(base + UART_IER) = 0;
+
+	/* Enable FIFO */
+	REG32(base + UART_IIR_FCR) = 0x07; /* FIFO enable + reset RX/TX */
+
+	/* Set divisor (DLAB=1) */
+	REG32(base + UART_LCR) = UART_LCR_DLAB;
+	REG32(base + UART_DLL) = divisor & 0xFF;
+	REG32(base + UART_DLH) = (divisor >> 8) & 0xFF;
+
+	/* 8-N-1, DLAB=0 */
+	REG32(base + UART_LCR) = UART_LCR_8N1;
+
+	/* RTS + DTR */
+	REG32(base + UART_MCR) = 0x03;
+}
+
+/* ─── TX ────────────────────────────────────────────────── */
+
+void uart_putc(uint32_t base, char c) {
+	/* Wait until TX Holding Register Empty */
+	while (!(REG32(base + UART_LSR) & UART_LSR_THRE))
+		;
+	REG32(base + UART_RBR_THR) = (uint32_t) c;
+
+	/* Auto CR+LF */
+	if (c == '\n')
+		uart_putc(base, '\r');
+}
+
+void uart_puts(uint32_t base, const char *s) {
+	while (*s)
+		uart_putc(base, *s++);
+}
+
+/* ─── RX ────────────────────────────────────────────────── */
+
+int uart_getc(uint32_t base) {
+	if (REG32(base + UART_LSR) & UART_LSR_DR)
+		return (int) (REG32(base + UART_RBR_THR) & 0xFF);
+	return -1;
+}
+
+/* ─── Minimal printf ────────────────────────────────────── */
+
+static void _putdec(uint32_t base, uint32_t n, int width, char pad) {
+	char buf[12];
+	int i = 0;
+	if (n == 0) {
+		buf[i++] = '0';
+	} else {
+		while (n) {
+			buf[i++] = '0' + (n % 10);
+			n /= 10;
+		}
+	}
+	/* padding */
+	for (int p = i; p < width; p++)
+		uart_putc(base, pad);
+	while (i--)
+		uart_putc(base, buf[i]);
+}
+
+static void _puthex(uint32_t base, uint32_t n, int upper) {
+	const char *d = upper ? "0123456789ABCDEF" : "0123456789abcdef";
+	uart_puts(base, "0x");
+	int leading = 1;
+	for (int s = 28; s >= 0; s -= 4) {
+		uint32_t nibble = (n >> s) & 0xF;
+		if (nibble || !leading || s == 0) {
+			uart_putc(base, d[nibble]);
+			leading = 0;
+		}
+	}
+}
+
+void uart_printf(uint32_t base, const char *fmt, ...) {
+	va_list ap;
+	va_start(ap, fmt);
+
+	while (*fmt) {
+		if (*fmt != '%') {
+			uart_putc(base, *fmt++);
+			continue;
+		}
+		fmt++;
+
+		/* Width / pad */
+		char pad = ' ';
+		int width = 0;
+		if (*fmt == '0') {
+			pad = '0';
+			fmt++;
+		}
+		while (*fmt >= '0' && *fmt <= '9') {
+			width = width * 10 + (*fmt++ - '0');
+		}
+
+		switch (*fmt) {
+		case 'c':
+			uart_putc(base, (char) va_arg(ap, int));
+			break;
+		case 's':
+			uart_puts(base, va_arg(ap, const char*));
+			break;
+		case 'd': {
+			int v = va_arg(ap, int);
+			if (v < 0) {
+				uart_putc(base, '-');
+				v = -v;
+			}
+			_putdec(base, (uint32_t) v, width, pad);
+			break;
+		}
+		case 'u':
+			_putdec(base, va_arg(ap, uint32_t), width, pad);
+			break;
+		case 'x':
+			_puthex(base, va_arg(ap, uint32_t), 0);
+			break;
+		case 'X':
+			_puthex(base, va_arg(ap, uint32_t), 1);
+			break;
+		case '%':
+			uart_putc(base, '%');
+			break;
+		default:
+			uart_putc(base, '%');
+			uart_putc(base, *fmt);
+			break;
+		}
+		fmt++;
+	}
+	va_end(ap);
+}
