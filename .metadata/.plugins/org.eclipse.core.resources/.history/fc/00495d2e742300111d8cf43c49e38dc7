@@ -1,7 +1,0 @@
-set remotetimeout 60
-
-monitor reset halt
-
-monitor load_image uboot_3/u-boot-spl 0x0 elf
-
-monitor load_image uboot_3/u-boot-spl.dtb 0xFFFFBF44 bin

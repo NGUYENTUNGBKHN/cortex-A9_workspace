@@ -25,6 +25,16 @@
 #define L4_UART_CLK_HZ   25000000UL  /* 25  MHz  (UART_CLK)              */
 #define BAUD_RATE          115200UL
 
+/* ─── Reset Manager ─────────────────────────── */
+#define RSTMGR_BASE         0xFFD05000UL
+#define RSTMGR_PERMODRST    0x14        /* Per Module Reset register */
+
+#define RSTMGR_PERMODRST_UART0  (1 << 16)
+
+#define CLKMGR_BASE          0xFFD04000UL
+#define CLKMGR_PERPLL_EN     0xA0        /* Peripheral PLL enables   */
+#define CLKMGR_L4SP_EN       0x68        /* L4 SP clock gate         */
+
 /* ─── GPIO Helpers ──────────────────────────────────────────*/
 
 static inline void gpio_set_dir_out(uint32_t base, uint32_t pins)
@@ -87,6 +97,12 @@ static void print_banner(void)
 
 int main(void)
 {
+	REG32(RSTMGR_BASE + RSTMGR_PERMODRST) &= ~RSTMGR_PERMODRST_UART0;
+
+	REG32(CLKMGR_BASE + CLKMGR_L4SP_EN) |= (1 << 0);
+	REG32(CLKMGR_BASE + CLKMGR_PERPLL_EN) |= (1 << 3);
+
+	for (volatile int i = 0; i < 10000; i++) __asm__ volatile ("nop");
     /* 1. Init UART0 ─────────────────────────────────────── */
     uart_init(UART0_BASE, UART_DIVISOR(L4_UART_CLK_HZ, BAUD_RATE));
     print_banner();

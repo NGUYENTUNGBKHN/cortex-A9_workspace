@@ -1,4 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<session version="1.0">
-<refactoring comment="Move &apos;debug_init.gdb&apos; to &apos;lab1&apos;" description="Move &apos;debug_init.gdb&apos; to &apos;lab1&apos;" destination="/lab1" element1="Debug/debug_init.gdb" flags="7" id="org.eclipse.ltk.core.refactoring.move.resources" resources="1" stamp="1773909736221" updateReferences="true"/>
-</session>
